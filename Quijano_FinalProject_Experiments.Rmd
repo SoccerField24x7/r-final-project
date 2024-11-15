@@ -84,9 +84,9 @@ coords_to_continent(test_points)
 ## Let's see if we can plot the data on the world map
 ```{r}
 glyph_ready <- data %>%
-  filter(!is.na(reclong)) %>%
+  filter(!is.na(reclong), reclong <= 180, reclong >= -180) %>%
   mutate(continent = coords_to_continent(data.frame(longitude = c(reclong), latitude = c(reclat)))) %>% 
-  select(lat = reclat, long = reclong, continent)
+  select(lat = reclat, long = reclong, continent, weight = mass..g.)
 
 world <- map_data("world")
 
@@ -111,3 +111,10 @@ ggplot() +
 
 ## Fun with population
 https://r2country.obi.obianom.com/
+
+## More data experimentation
+```{r}
+data %>% group_by(recclass) %>% summarize(total = n()) %>% arrange(desc(total))
+data %>% group_by(year) %>% summarize(total = n()) %>% arrange(desc(year))
+```
+
