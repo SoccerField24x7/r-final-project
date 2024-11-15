@@ -1,0 +1,144 @@
+---
+title: "Final Project Draft"
+subtitle: "Draft for Review"
+author: "Jesse Quijano"
+date: "2024-11-12"
+output: 
+  html_notebook:
+    fig_height: 7
+    fig_width: 10
+---
+
+# What Continent has the most meteorite strikes by quantity and volume?
+
+```{r}
+rm(list = ls())
+library(tidyverse)
+#install.packages("rworldmap")
+library(rworldmap)
+
+#install.packages("maps")
+```
+
+## The Data Sets
+Three primary data sets were used:
+
+### NASA Data
+The primary data set I will use is from The National Aeronautics and Space Administration (NASA).
+
+Each case, 45,716 in total, represents a meteorite that has "landed" on Earth. There are 7,315 cases with NA for their latitude/longitude coordinates, which are removed for this analysis. The majority of these were actually found in various Antartic regions. Augmenting the results with additional research to include these data would likely impact the outcomes.
+
+```{r}
+data <- read.csv("Meteorite_Landings_20241109.csv")
+head(data)
+```
+
+!! More information on the NASA data can be found at [NASA: Meteorite Landings](https://data.nasa.gov/Space-Science/Meteorite-Landings/gh4g-9sfh/about_data)
+
+### Spatial Polygon Data
+We'll use this data from the rworldxtra CRAN package to determine which continent lat/long coordinates belong to.
+
+```{r}
+library(sp)
+#install.packages("rworldxtra")
+library(rworldxtra)
+
+countriesSP <- getMap(resolution='high')
+head(countriesSP)
+```
+!! More information on the [rworldxtra package](https://cran.r-project.org/web/packages/rworldxtra/index.html)
+
+## ggplot Maps
+```{r}
+world <- map_data("world") #from ggplot2
+head(world)
+```
+
+
+## Setup Functions
+Joins the primary data with the spacial data.
+```{r}
+coords_to_continent = function(points)
+{
+  pointsSP = SpatialPoints(points, proj4string=CRS(proj4string(countriesSP)))
+  indices = over(pointsSP, countriesSP)
+  indices$REGION # will for sure need this!
+}
+```
+
+## Plot the general landing data on the world map
+This is just to give a visual "feel" for the number of landings we are dealing with.
+
+```{r}
+glyph_ready <- data %>%
+  filter(!is.na(reclong), reclong <= 180, reclong >= -180) %>% # remove the outliers
+  mutate(continent = coords_to_continent(data.frame(longitude = c(reclong), latitude = c(reclat)))) %>% 
+  select(lat = reclat, long = reclong, continent, weight = mass..g.)
+
+world %>% ggplot(aes(x = long, y = lat, colour = continent)) +
+  geom_map(
+    map = world,
+    aes(map_id = region),
+    color = "white",
+    fill = "lightgray",
+    linewidth = 0.1
+  ) +
+  geom_point(
+    data = glyph_ready,
+    aes(x = long, y = lat),
+    alpha = 0.7,
+    size = .1
+  ) +
+  guides(fill="none", color="none") +
+  ylab("Latitude") +
+  xlab("Logitude") +
+  ggtitle("Metorite Landings Through 2013")
+```
+
+## Let's have a look at total number of strikes by Continent
+
+```{r}
+# prepare the count data: clean up SA, sum, and order
+count_ready <- glyph_ready %>%
+  mutate(continent = str_replace(continent, ".*South.*", "South America")) %>%
+  filter(!is.na(continent)) %>%
+  group_by(continent) %>%
+  summarise(count = n()) %>%
+  arrange(desc(count)) %>%
+  mutate(continent = factor(continent, levels = unique(continent))) # only way I could find to set the order of the chart
+
+# plot the bar chart with labels, ordered by count
+count_ready %>%
+  ggplot(aes(x = continent, y = count, fill = continent)) +
+  geom_col(position = 'dodge') +
+  geom_text(aes(label=count), position=position_dodge(width=0.9), vjust=-0.25) +
+  scale_fill_hue(direction = 1) +
+  theme_bw() +
+  xlab("Continent") +
+  ylab("Count") +
+  ggtitle("Meteorite Landings by Continent")
+```
+The winner, by a landslide, is Antarctica with over 6 times the number of landings.
+
+## Now let's so a similar analysis by weight.
+```{r}
+# prepare the count data: clean up SA, sum, and order
+weight_ready <- glyph_ready %>%
+  mutate(continent = str_replace(continent, ".*South.*", "South America")) %>%
+  filter(!is.na(continent), !is.na(weight)) %>%
+  group_by(continent) %>%
+  summarise(total_mass = sum(weight) / 1000) %>%
+  arrange(desc(total_mass)) %>%
+  mutate(continent = factor(continent, levels = unique(continent))) # only way I could find to set the order of the chart
+
+ggplot(weight_ready) +
+  aes(x = continent, y = total_mass, fill = continent) +
+  geom_col() +
+  scale_fill_hue(direction = 1) +
+  theme_bw() +
+  xlab("Continent") +
+  ylab("Mass (KG)") +
+  ggtitle("Meteorite Mass by Continent")
+```
+I expected that Antarctica would have contained the most meteorite material given it's overwhelming lead in count. Instead it was the smallest by weight and South America was actually the holder of the most meteorite material!
+

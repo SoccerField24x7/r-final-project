@@ -1,0 +1,113 @@
+---
+title: "Final Project Experimenting"
+subtitle: "Preliminary Exploratory Data Analysis"
+author: "Jesse Quijano"
+date: "2024-11-10"
+output: 
+  html_notebook:
+    fig_height: 7
+    fig_width: 10
+---
+# What Continent has the most meteorite strikes by quantity and volume?
+
+### Set Up
+
+#### Clean up environment and load packages:
+```{r}
+rm(list = ls())
+library(tidyverse)
+
+#install.packages("maps")
+```
+## The Data Sets
+The primary data set I will use is from The National Aeronautics and Space Administration (NASA).
+
+Each case, 45,716 in total, represents a meteorite that has "landed" on Earth. There are three primary variables I am interested in (at least for now):
+
+* reclat - the latitude of where the meteorite was found.
+* reclong - the longitude of where the metorite was found.
+* mass - the weight in grams of the meteorite
+
+The other data set is from Dtechtive. It's the first I found, but is now just serving as my back-up data. I'd like to find a way to link that data between this and the NASA data, but haven't found a reliable join as of yet.
+
+```{r}
+data <- read.csv("Meteorite_Landings_20241109.csv")
+head(data)
+
+rejects <- data %>% filter(is.na(reclong))
+
+#install.packages("foreign")
+library(foreign)
+dbf <- read.dbf("cartodb_query.dbf") #another meteorite data set that might be useful as it contains links out to meteoritical society
+head(dbf)
+```
+
+!! More information on the NASA data can be found at [NASA: Meteorite Landings](https://data.nasa.gov/Space-Science/Meteorite-Landings/gh4g-9sfh/about_data)
+
+## Experiment Using `rworldmap` to Find Continent Names
+The other data set I will definitely be using. Leveraging geo coordinates (lat/long) from a sample meteorite landing, see if I can find the corresponding country data - specifically the continent, but there seems to be some other interesting data I might be able to make use of.
+
+```{r}
+# will use this to convert the lat/long to continent
+# Information found here: https://stackoverflow.com/a/14342127/1732853
+
+library(sp)
+#install.packages("rworldmap")
+library(rworldmap)
+vignette("rworldmap")
+help("rworldmap")
+
+countriesSP <- getMap(resolution='low')
+head(countriesSP)
+
+test_points <- data.frame(longitude = c(6.08333), latitude = c(50.77500))
+
+pointsSP = SpatialPoints(test_points, proj4string=CRS(proj4string(countriesSP)))
+indices = over(pointsSP, countriesSP)
+indices
+indices$REGION # will for sure need this!
+
+coords_to_continent = function(points)
+{
+  print(points)
+  countriesSP <- getMap(resolution='low')
+
+  pointsSP = SpatialPoints(points, proj4string=CRS(proj4string(countriesSP)))
+  indices = over(pointsSP, countriesSP)
+  indices$REGION # will for sure need this!
+}
+
+coords_to_continent(test_points)
+
+```
+
+## Let's see if we can plot the data on the world map
+```{r}
+glyph_ready <- data %>%
+  filter(!is.na(reclong)) %>%
+  mutate(continent = coords_to_continent(data.frame(longitude = c(reclong), latitude = c(reclat)))) %>% 
+  select(lat = reclat, long = reclong, continent)
+
+world <- map_data("world")
+
+ggplot() +
+  geom_map(
+    data = world, map = world,
+    aes(long, lat, map_id = region), color = "white", fill = "lightgray", linewidth = 0.1
+  ) +
+  geom_point(
+    data = glyph_ready,
+    aes(long, lat), #, color = by type maybe?
+    alpha = 0.7,
+    size = .1
+  ) 
+```
+
+### Intuition Related Observations:
+
+* Look into the 7,315 rows that are removed. They must be important?
+* The observations in the U.S. must be better/more complete. The density of the strikes seems unusual.
+* I think my scale might be off (which might explain the first bullet) - since I have a lot of points located in the ocean at the bottom of my plot.
+
+## Fun with population
+https://r2country.obi.obianom.com/
